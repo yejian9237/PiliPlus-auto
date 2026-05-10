@@ -160,13 +160,14 @@ class AudioController extends GetxController
         _queryPlayUrl();
       }
     });
-    videoPlayerServiceHandler
-      ?..onPlay = onPlay
-      ..onPause = onPause
-      ..onSeek = onSeek
-      ..onSkipToNext = () => playNext(nextPart: true) ? Future.value() : null
-      ..onSkipToPrevious = () => playPrev() ? Future.value() : null
-      ..onSkipToQueueItem = _onSkipToQueueItem;
+    if (videoPlayerServiceHandler case final handler?) {
+      handler.onPlay = onPlay;
+      handler.onPause = onPause;
+      handler.onSeek = onSeek;
+      handler.onSkipToNext = () => playNext(nextPart: true) ? Future.value() : null;
+      handler.onSkipToPrevious = () => playPrev() ? Future.value() : null;
+      handler.onSkipToQueueItem = _onSkipToQueueItem;
+    }
 
     animController = AnimationController(
       vsync: this,
