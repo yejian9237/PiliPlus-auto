@@ -3,14 +3,17 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/sponsor_block.dart';
 import 'package:PiliPlus/models/common/sponsor_block/segment_model.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
+import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/models_new/sponsor_block/segment_item.dart';
+import 'package:PiliPlus/pages/video/controller.dart';
+import 'package:PiliPlus/pages/video/widgets/header_control.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
-import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
-import 'package:PiliPlus/services/service_locator.dart';
+import 'package:PiliPlus/plugin/pl_player/view/view.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:get/get.dart';
 
 class CarVideoPageEnhanced extends StatefulWidget {
   final String videoType;
@@ -34,20 +37,53 @@ class CarVideoPageEnhanced extends StatefulWidget {
 
 class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
   bool _showDanmaku = true;
-  PlPlayerController? _controller;
+  bool _isLoading = true;
+  late VideoDetailController _videoDetailController;
   final List<SegmentModel> _segmentList = [];
   int? _lastBlockPos;
   bool _isSkippingAd = false;
 
-  void _onControllerCreated(PlPlayerController controller) {
-    _controller = controller;
-    _controller!.showDanmaku = _showDanmaku;
-    _setupBlockListener(controller);
+  @override
+  void initState() {
+    super.initState();
+    _initVideoController();
   }
 
-  void _setupBlockListener(PlPlayerController controller) {
-    controller.addPositionListener(_checkAndSkipAd);
-    controller.addStatusLister((status) {
+  void _initVideoController() {
+    _videoDetailController = Get.put(VideoDetailController());
+
+    if (widget.bvid != null) {
+      _videoDetailController.initVideo(
+        widget.videoType,
+        widget.bvid!,
+        widget.cid,
+        widget.p,
+      );
+    } else if (widget.avid != null) {
+      _videoDetailController.initVideo(
+        widget.videoType,
+        widget.avid!,
+        widget.cid,
+        widget.p,
+      );
+    }
+
+    // 等待播放器初始化完成
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        _setupBlockListener();
+      }
+    });
+  }
+
+  PlPlayerController? get _controller => _videoDetailController.plPlayerController;
+
+  void _setupBlockListener() {
+    _controller?.addPositionListener(_checkAndSkipAd);
+    _controller?.addStatusLister((status) {
       if (status.isPlaying) {
         _initSponsorBlock();
       }
@@ -175,6 +211,157 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
     _controller?.showDanmaku = _showDanmaku;
   }
 
+  void _showQualitySheet() {
+    if (_controller == null) return;
+    final videoInfo = _videoDetailController.data;
+    if (videoInfo.dash == null || videoInfo.supportFormats == null) {
+      SmartDialog.showToast('暂无画质可选');
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white30,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '选择画质',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...videoInfo.supportFormats!.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final currentQa = _videoDetailController.currentVideoQa.value;
+              final isSelected = currentQa?.code == item.quality;
+              return ListTile(
+                title: Text(
+                  item.newDesc ?? '',
+                  style: TextStyle(
+                    color: isSelected ? Colors.blue : Colors.white,
+                  ),
+                ),
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                onTap: () {
+                  if (currentQa?.code == item.quality) return;
+                  final quality = item.quality!;
+                  final newQa = VideoQuality.fromCode(quality);
+                  _videoDetailController
+                    ..plPlayerController.cacheVideoQa = newQa.code
+                    ..currentVideoQa.value = newQa
+                    ..updatePlayer();
+                  SmartDialog.showToast('画质已变为：${newQa.desc}');
+                  Navigator.pop(context);
+                },
+              );
+            }),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSubtitleSheet() {
+    if (_controller == null) return;
+    if (_videoDetailController.subtitles.isEmpty) {
+      SmartDialog.showToast('暂无字幕');
+      return;
+    }
+
+    final currentIndex = _videoDetailController.vttSubtitlesIndex.value;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white30,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '字幕',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text(
+                '关闭字幕',
+                style: TextStyle(color: Colors.white),
+              ),
+              trailing: currentIndex == 0
+                  ? const Icon(Icons.check, color: Colors.blue)
+                  : null,
+              onTap: () {
+                _videoDetailController.setSubtitle(0);
+                Navigator.pop(context);
+              },
+            ),
+            ..._videoDetailController.subtitles.asMap().entries.map((entry) {
+              final index = entry.key;
+              final subtitle = entry.value;
+              final isSelected = currentIndex == index + 1;
+              return ListTile(
+                title: Text(
+                  '${subtitle.lanDoc}',
+                  style: TextStyle(
+                    color: isSelected ? Colors.blue : Colors.white,
+                  ),
+                ),
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                onTap: () {
+                  _videoDetailController.setSubtitle(index + 1);
+                  Navigator.pop(context);
+                },
+              );
+            }),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSettingsSheet() {
     showModalBottomSheet(
       context: context,
@@ -198,13 +385,19 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
             ),
             const SizedBox(height: 16),
             _buildSettingsTile(
+              icon: Icons.high_quality,
+              title: '画质',
+              onTap: _showQualitySheet,
+            ),
+            _buildSettingsTile(
               icon: Icons.speed,
               title: '播放速度',
-              subtitle: Text(
-                '${_controller?.playbackSpeed ?? 1.0}x',
-                style: const TextStyle(color: Colors.white54),
-              ),
               onTap: _showSpeedSheet,
+            ),
+            _buildSettingsTile(
+              icon: Icons.closed_caption,
+              title: '字幕',
+              onTap: _showSubtitleSheet,
             ),
             _buildSettingsTile(
               icon: _showDanmaku ? Icons.visibility : Icons.visibility_off,
@@ -225,7 +418,7 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
-    required Widget subtitle,
+    Widget? subtitle,
     required VoidCallback onTap,
   }) {
     return ListTile(
@@ -238,7 +431,7 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
   }
 
   void _showSpeedSheet() {
-    Navigator.pop(context);
+    if (_controller == null) return;
     final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
     showModalBottomSheet(
       context: context,
@@ -286,18 +479,52 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
   }
 
   @override
+  void dispose() {
+    Get.delete<VideoDetailController>();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(
+                color: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '加载中...',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          '车机播放器',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          _videoDetailController.videoTitle,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
@@ -315,42 +542,18 @@ class _CarVideoPageEnhancedState extends State<CarVideoPageEnhanced> {
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.play_circle_outline,
-              size: 80,
-              color: Colors.white54,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '增强版车机播放器',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '功能：弹幕、倍速、广告跳过',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_segmentList.isNotEmpty)
-              Text(
-                '已加载 ${_segmentList.length} 个广告跳过片段',
-                style: TextStyle(
-                  color: Colors.green.withValues(alpha: 0.8),
-                  fontSize: 12,
-                ),
-              ),
-          ],
+      body: PLVideoPlayer(
+        maxWidth: size.width,
+        maxHeight: size.height,
+        plPlayerController: _videoDetailController.plPlayerController,
+        videoDetailController: _videoDetailController,
+        introController: _videoDetailController,
+        headerControl: HeaderControl(
+          isPortrait: true,
+          controller: _videoDetailController.plPlayerController,
+          videoDetailCtr: _videoDetailController,
         ),
+        heroTag: 'car_video_player_${widget.bvid}',
       ),
     );
   }
