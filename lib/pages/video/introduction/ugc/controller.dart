@@ -27,6 +27,7 @@ import 'package:PiliPlus/pages/dynamics_repost/view.dart';
 import 'package:PiliPlus/pages/video/pay_coins/view.dart';
 import 'package:PiliPlus/pages/video/related/controller.dart';
 import 'package:PiliPlus/pages/video/reply/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -84,6 +85,13 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
         }
       });
     }
+
+    PlPlayerController.setSkipNextCallback(() async {
+      nextPlay();
+    });
+    PlPlayerController.setSkipPreviousCallback(() async {
+      prevPlay();
+    });
 
     videoDetail.value.title = Get.arguments['title'] ?? '';
   }

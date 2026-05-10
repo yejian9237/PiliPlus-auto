@@ -64,6 +64,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:window_manager/window_manager.dart';
 
 typedef PlayCallback = Future<void>? Function();
+typedef SkipCallback = Future<void>? Function();
 
 class PlPlayerController with BlockConfigMixin {
   Player? _videoPlayerController;
@@ -71,6 +72,26 @@ class PlPlayerController with BlockConfigMixin {
 
   // 添加一个私有静态变量来保存实例
   static PlPlayerController? _instance;
+
+  // 上一首/下一首回调
+  static SkipCallback? _skipNextCallback;
+  static SkipCallback? _skipPreviousCallback;
+
+  static void setSkipNextCallback(SkipCallback? callback) {
+    _skipNextCallback = callback;
+  }
+
+  static void setSkipPreviousCallback(SkipCallback? callback) {
+    _skipPreviousCallback = callback;
+  }
+
+  static Future<void>? skipToNextIfExists() {
+    return _skipNextCallback?.call();
+  }
+
+  static Future<void>? skipToPreviousIfExists() {
+    return _skipPreviousCallback?.call();
+  }
 
   // 流事件  监听播放状态变化
   // StreamSubscription? _playerEventSubs;
@@ -389,6 +410,22 @@ class PlPlayerController with BlockConfigMixin {
 
   // 播放顺序相关
   late PlayRepeat playRepeat = Pref.playRepeat;
+
+  // 车队适配：队列状态
+  bool hasQueueNext = false;
+  bool hasQueuePrevious = false;
+
+  void setQueueState({required bool hasNext, required bool hasPrevious}) {
+    hasQueueNext = hasNext;
+    hasQueuePrevious = hasPrevious;
+    videoPlayerServiceHandler?.onStatusChange(
+      playerStatus.value,
+      isBuffering.value,
+      isLive,
+      hasNext: hasNext,
+      hasPrevious: hasPrevious,
+    );
+  }
 
   TextStyle get subTitleStyle => TextStyle(
     height: 1.5,

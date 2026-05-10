@@ -163,7 +163,10 @@ class AudioController extends GetxController
     videoPlayerServiceHandler
       ?..onPlay = onPlay
       ..onPause = onPause
-      ..onSeek = onSeek;
+      ..onSeek = onSeek
+      ..onSkipToNext = () => playNext(nextPart: true) ? Future.value() : null
+      ..onSkipToPrevious = () => playPrev() ? Future.value() : null
+      ..onSkipToQueueItem = _onSkipToQueueItem;
 
     animController = AnimationController(
       vsync: this,
@@ -191,6 +194,24 @@ class AudioController extends GetxController
 
   Future<void>? onSeek(Duration duration) {
     return player?.seek(duration);
+  }
+
+  Future<void>? _onSkipToQueueItem(int index) {
+    if (playlist != null && index >= 0 && index < playlist!.length) {
+      playIndex(index);
+      return Future.value();
+    }
+    return null;
+  }
+
+  bool get hasNextInPlaylist {
+    if (playlist == null || index == null) return false;
+    return index! + 1 < playlist!.length;
+  }
+
+  bool get hasPreviousInPlaylist {
+    if (playlist == null || index == null) return false;
+    return index! - 1 >= 0;
   }
 
   void _updateCurrItem(DetailItem item) {
@@ -812,6 +833,9 @@ class AudioController extends GetxController
       ?..onPlay = null
       ..onPause = null
       ..onSeek = null
+      ..onSkipToNext = null
+      ..onSkipToPrevious = null
+      ..onSkipToQueueItem = null
       ..onVideoDetailDispose(hashCode.toString());
     _subscriptions?.forEach((e) => e.cancel());
     _subscriptions?.clear();

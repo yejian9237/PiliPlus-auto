@@ -34,24 +34,27 @@ Future<VideoPlayerServiceHandler> initAudioService() {
 
 class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
   static final List<MediaItem> _item = [];
+  static final List<MediaItem> _queue = [];
+  static int _currentIndex = 0;
   bool enableBackgroundPlay = Pref.enableBackgroundPlay;
 
   Future<void>? Function()? onPlay;
   Future<void>? Function()? onPause;
   Future<void>? Function(Duration position)? onSeek;
+  Future<void>? Function()? onSkipToNext;
+  Future<void>? Function()? onSkipToPrevious;
+  Future<void>? Function(int index)? onSkipToQueueItem;
 
   @override
   Future<void> play() {
     return onPlay?.call() ??
         PlPlayerController.playIfExists() ??
         Future.syncValue(null);
-    // player.play();
   }
 
   @override
   Future<void> pause() {
     return onPause?.call() ?? PlPlayerController.pauseIfExists();
-    // player.pause();
   }
 
   @override
@@ -63,8 +66,70 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     );
     return (onSeek?.call(position) ??
         PlPlayerController.seekToIfExists(position, isSeek: false));
-    // await player.seekTo(position);
   }
+
+  @override
+  Future<void> skipToNext() {
+    return onSkipToNext?.call() ?? _defaultSkipToNext();
+  }
+
+  @override
+  Future<void> skipToPrevious() {
+    return onSkipToPrevious?.call() ?? _defaultSkipToPrevious();
+  }
+
+  @override
+  Future<void> skipToQueueItem(int index) {
+    return onSkipToQueueItem?.call(index) ?? _defaultSkipToQueueItem(index);
+  }
+
+  Future<void> _defaultSkipToNext() async {
+    if (_queue.isEmpty) return;
+    final nextIndex = _currentIndex + 1;
+    if (nextIndex < _queue.length) {
+      await _defaultSkipToQueueItem(nextIndex);
+    }
+  }
+
+  Future<void> _defaultSkipToPrevious() async {
+    if (_queue.isEmpty) return;
+    final prevIndex = _currentIndex - 1;
+    if (prevIndex >= 0) {
+      await _defaultSkipToQueueItem(prevIndex);
+    }
+  }
+
+  Future<void> _defaultSkipToQueueItem(int index) async {
+    if (index < 0 || index >= _queue.length) return;
+    _currentIndex = index;
+    final mediaItem = _queue[index];
+    setMediaItem(mediaItem);
+  }
+
+  void setQueue(List<MediaItem> newQueue, {int initialIndex = 0}) {
+    _queue.clear();
+    _queue.addAll(newQueue);
+    _currentIndex = initialIndex.clamp(0, newQueue.length > 0 ? newQueue.length - 1 : 0);
+    if (queue.length > 0) {
+      queue.add(newQueue);
+    }
+  }
+
+  void addToQueue(MediaItem item) {
+    _queue.add(item);
+    if (queue.isNotEmpty) {
+      queue.add(item);
+    }
+  }
+
+  void clearQueue() {
+    _queue.clear();
+    _currentIndex = 0;
+    queue.clear();
+  }
+
+  int get currentQueueIndex => _currentIndex;
+  int get queueLength => _queue.length;
 
   void setMediaItem(MediaItem newMediaItem) {
     if (!enableBackgroundPlay) return;
@@ -80,8 +145,10 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
   void setPlaybackState(
     PlayerStatus status,
     bool isBuffering,
-    bool isLive,
-  ) {
+    bool isLive, {
+    bool hasNext = false,
+    bool hasPrevious = false,
+  }) {
     if (!enableBackgroundPlay ||
         _item.isEmpty ||
         !PlPlayerController.instanceExists()) {
@@ -104,6 +171,10 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
             ? AudioProcessingState.buffering
             : processingState,
         controls: [
+          if (hasPrevious)
+            MediaControl.skipToPrevious.copyWith(
+              androidIcon: 'drawable/ic_baseline_skip_previous_24',
+            ),
           if (!isLive)
             MediaControl.rewind.copyWith(
               androidIcon: 'drawable/ic_baseline_replay_10_24',
@@ -113,20 +184,38 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
             MediaControl.fastForward.copyWith(
               androidIcon: 'drawable/ic_baseline_forward_10_24',
             ),
+          if (hasNext)
+            MediaControl.skipToNext.copyWith(
+              androidIcon: 'drawable/ic_baseline_skip_next_24',
+            ),
         ],
         playing: playing,
         systemActions: const {
           MediaAction.seek,
+          MediaAction.skipToNext,
+          MediaAction.skipToPrevious,
         },
       ),
     );
   }
 
-  void onStatusChange(PlayerStatus status, bool isBuffering, isLive) {
+  void onStatusChange(
+    PlayerStatus status,
+    bool isBuffering,
+    isLive, {
+    bool hasNext = false,
+    bool hasPrevious = false,
+  }) {
     if (!enableBackgroundPlay) return;
 
     if (_item.isEmpty) return;
-    setPlaybackState(status, isBuffering, isLive);
+    setPlaybackState(
+      status,
+      isBuffering,
+      isLive,
+      hasNext: hasNext,
+      hasPrevious: hasPrevious,
+    );
   }
 
   void onVideoDetailChange(
