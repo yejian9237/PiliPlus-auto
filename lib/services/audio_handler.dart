@@ -109,23 +109,16 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
   void setQueue(List<MediaItem> newQueue, {int initialIndex = 0}) {
     _queue.clear();
     _queue.addAll(newQueue);
-    _currentIndex = initialIndex.clamp(0, newQueue.length > 0 ? newQueue.length - 1 : 0);
-    if (queue.length > 0) {
-      queue.add(newQueue);
-    }
+    _currentIndex = initialIndex.clamp(0, newQueue.isNotEmpty ? newQueue.length - 1 : 0);
   }
 
   void addToQueue(MediaItem item) {
     _queue.add(item);
-    if (queue.isNotEmpty) {
-      queue.add(item);
-    }
   }
 
   void clearQueue() {
     _queue.clear();
     _currentIndex = 0;
-    queue.clear();
   }
 
   int get currentQueueIndex => _currentIndex;
